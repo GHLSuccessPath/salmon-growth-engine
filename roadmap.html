@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Salmon Growth Engine Flow</title>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#fff; --ink:#15171c; --muted:#5f6673; --line:#e2e5ea;
+  --p1:#2f6fed; --p2:#8a4bdb; --p3:#e0821b; --p4:#1d9a5b; --p5:#d6406b;
+  --ok:#1d9a5b; --ok-bg:#e4f5ec; --warn:#b26b00; --warn-bg:#fff2d9; --bad:#c22a37; --bad-bg:#fde6e8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101216; --card:#1a1d23; --ink:#eceef2; --muted:#9ba2ae; --line:#2b2f37;
+    --p1:#6e9cff; --p2:#b388f5; --p3:#f5a54a; --p4:#4cc785; --p5:#ff7398;
+    --ok:#4cc785; --ok-bg:#16291f; --warn:#f2b456; --warn-bg:#2e2512; --bad:#ff6d78; --bad-bg:#2f171a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101216; --card:#1a1d23; --ink:#eceef2; --muted:#9ba2ae; --line:#2b2f37;
+  --p1:#6e9cff; --p2:#b388f5; --p3:#f5a54a; --p4:#4cc785; --p5:#ff7398;
+  --ok:#4cc785; --ok-bg:#16291f; --warn:#f2b456; --warn-bg:#2e2512; --bad:#ff6d78; --bad-bg:#2f171a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1060px;margin:0 auto;padding:0 16px}
+header{padding:22px 0 8px}
+h1{margin:0;font-size:22px}
+.tag{color:var(--muted);margin:2px 0 0}
+.theme{float:right;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit;font-size:13px}
+
+/* ---- flow map ---- */
+.map{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 14px 10px;margin:14px 0;overflow-x:auto}
+.phases{display:flex;min-width:820px}
+.phase{text-align:center;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding-bottom:8px;border-bottom:3px solid;margin:0 3px}
+.nodes{display:flex;min-width:820px;align-items:flex-start;margin-top:12px}
+.node{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;background:none;border:0;color:inherit;font:inherit;padding:0;position:relative}
+.node:not(:last-child):after{content:"";position:absolute;top:17px;left:calc(50% + 20px);right:calc(-50% + 20px);height:2px;background:var(--line)}
+.node.done:not(:last-child):after{background:var(--c)}
+.dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;border:2px solid var(--c);color:var(--c);background:var(--card);transition:.15s}
+.node.done .dot{background:var(--c);color:#fff}
+.node.cur .dot{background:var(--c);color:#fff;transform:scale(1.18);box-shadow:0 0 0 5px color-mix(in srgb,var(--c) 22%,transparent)}
+.node span{font-size:12px;line-height:1.25;text-align:center;color:var(--muted);max-width:84px}
+.node.cur span{color:var(--ink);font-weight:700}
+.node:focus-visible .dot{outline:2px solid var(--ink);outline-offset:3px}
+
+/* ---- step card ---- */
+.stage{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+@media (max-width:820px){.stage{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.ptag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--c)}
+.big{font-size:28px;font-weight:800;margin:4px 0 6px;line-height:1.2}
+.what{font-size:17px;margin:0 0 18px}
+.lbl{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+
+/* branches */
+.branches{display:flex;flex-direction:column;gap:8px}
+.br{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.br .ic{font-size:20px;width:26px;text-align:center}
+.br b{display:block}
+.br small{color:var(--muted)}
+.br .go{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+.br.link{cursor:pointer}.br.link:hover{border-color:var(--c)}
+
+.side{display:flex;flex-direction:column;gap:14px}
+.time{font-size:26px;font-weight:800;color:var(--c)}
+.tools{display:flex;flex-direction:column;gap:6px}
+.tool{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:15px}
+.pill{font-size:12px;font-weight:700;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.ok{background:var(--ok-bg);color:var(--ok)} .warn{background:var(--warn-bg);color:var(--warn)} .bad{background:var(--bad-bg);color:var(--bad)}
+.watch{margin:0;padding-left:18px}
+.watch li{margin:4px 0}
+details{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+summary{cursor:pointer;color:var(--muted);font-size:14px;font-weight:600}
+details p{font-size:14px;color:var(--muted);margin:8px 0 0}
+code{font-size:13px;background:var(--bg);padding:1px 5px;border-radius:4px}
+
+.navbtns{display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px;gap:10px}
+.btn{border:0;border-radius:10px;padding:12px 22px;font:inherit;font-weight:700;cursor:pointer}
+.btn.prev{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.btn.next{background:var(--c);color:#fff}
+.btn:disabled{opacity:.35;cursor:default}
+.hint{font-size:13px;color:var(--muted)}
+
+/* always on */
+.always{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:22px 0}
+.always .card{padding:14px 16px;cursor:pointer}
+.always .card:hover{border-color:var(--c)}
+
+/* extras */
+.extras{margin:26px 0 60px}
+.extras > details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:0 0 10px}
+.extras > details > summary{font-size:16px;color:var(--ink);font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:12px}
+.mini{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
+.mini b{display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:4px;font-size:15px}
+.weeks{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.wk{display:grid;grid-template-columns:90px 1fr auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
+@media (max-width:560px){.wk{grid-template-columns:1fr}}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <button class="theme" id="themeBtn">◐ Theme</button>
+  <h1>Salmon Growth Engine</h1>
+  <p class="tag">Follow one lead from the first click to a loyal customer, one step at a time.</p>
+</header>
+
+<div class="map" id="map"><div class="phases" id="phases"></div><div class="nodes" id="nodes"></div></div>
+
+<div class="stage" id="stage"></div>
+
+<div class="navbtns">
+  <button class="btn prev" id="prev">← Back</button>
+  <span class="hint" id="count"></span>
+  <button class="btn next" id="next">Next →</button>
+</div>
+<p class="hint" style="text-align:center;margin:0">Tip: use ← → keys, or click any circle above.</p>
+
+<h3 style="margin:28px 0 0">Always running in the background</h3>
+<div class="always" id="always"></div>
+
+<div class="extras">
+  <details>
+    <summary>🧰 Tools check: is each one ready?</summary>
+    <div class="legend"><span><span class="pill ok">Ready</span> works today</span><span><span class="pill warn">Check</span> works, one detail to confirm</span><span><span class="pill bad">Manual</span> no open API, so a person does it</span></div>
+    <div class="grid" id="toolGrid"></div>
+  </details>
+  <details>
+    <summary>📅 12-week build plan</summary>
+    <div class="weeks" id="weeks"></div>
+  </details>
+  <details>
+    <summary>🎯 What "done" looks like</summary>
+    <p style="font-size:15px;color:var(--ink)">A test lead comes in from a lead marketplace at <b>9 p.m. on a Saturday</b>. Within <b>60 seconds</b> it has been permission-checked, matched, scored, sent to the right agency, and texted. It books a Monday call with the right agent and fills in the form, and its quote appears in QuoteRUSH without anyone retyping it (after one "Send" click). Once the policy is active, every sales message stops and onboarding begins. Every step shows up on the scorecard.</p>
+  </details>
+</div>
+</div>
+
+<script>
+const PH = [
+ {name:"Capture", c:"--p1"},
+ {name:"Qualify", c:"--p2"},
+ {name:"Quote",   c:"--p3"},
+ {name:"Close",   c:"--p4"},
+ {name:"Keep",    c:"--p5"}
+];
+const S = {ok:["ok","Ready"],warn:["warn","Check"],bad:["bad","Manual"]};
+const pill = s => `<span class="pill ${S[s][0]}">${S[s][1]}</span>`;
+
+const TOOLS = {
+ ghl:["GoHighLevel (CRM + texting)","ok","Main hub. API limits are fine if we queue requests. Each brand must register for business texting (A2P 10DLC) first, which takes 1–3 weeks."],
+ n8n:["n8n (automation engine)","ok","Connects everything. We host it ourselves, so we handle backups and uptime."],
+ salt:["Salt (intake form)","warn","Sends a webhook to n8n when a form is started or finished. The send to QuoteRUSH is a manual click, and Salt can only be connected to one quoting tool at a time."],
+ qr:["QuoteRUSH (multi-carrier quotes)","warn","Its API needs approval. Fallback: the agent types the quote result into the CRM."],
+ ezl:["EZLynx (policy system)","bad","Its API is open to approved partners only. Apply in week 1; until then, use a scheduled file export."],
+ allstate:["Allstate systems","bad","No public API. The agent updates the CRM by hand."],
+ cooper:["Cooper (reads PDFs)","warn","Reads dec pages and loss runs and fills ACORD forms. Connects through the mailbox; no public API."],
+ intercom:["Intercom (website chat)","ok","Has webhooks and custom fields, so it connects cleanly."],
+ consent:["Consent / Do-Not-Call check","warn","Vendor not chosen yet and prices aren't public. Must answer in under 3 seconds."],
+ dialer:["Phone dialer","warn","WAVV, Kixie or Hot Prospector. None of them limits calls across systems, so we count calls ourselves."],
+ instantly:["Instantly (cold email)","ok","Sends a webhook when someone replies. Lock it with a secret header, since Instantly doesn't sign its webhooks."],
+ lists:["Wiza / Apollo (lead lists)","ok","CSV or API import. These contacts have no permission, so email only."],
+ market:["EverQuote / SmartFinancial","warn","Leads arrive in real time and are shared with up to 3 agents, so speed wins. Confirm each vendor's format."],
+ wh:["Database (warehouse)","ok","Stores every event and powers the scorecard. Encrypt personal data."],
+ brain:["Business Brain (rules + scripts)","ok","The only source the AI may answer from. Every change is reviewed."]
+};
+
+const STEPS = [
+ {p:0,short:"Lead arrives",title:"A lead comes in",
+  what:"Someone fills out a form, chats on the website, replies to an email, or is bought from a lead marketplace. Whatever the source, it becomes one clean, standard record.",
+  branches:[["🌐","Website & Near Me forms","Most common"],["💬","Website chat","Intercom"],["🛒","Bought leads","EverQuote, SmartFinancial"],["📧","Cold email replies & lists","Instantly, Wiza, Apollo"],["🤝","Partners & referrals","Realtors, lenders, customers"]],
+  time:"< 2 seconds",tools:["n8n","market","intercom","instantly","lists"],
+  watch:["Bought leads can arrive 100+ per minute, so the system must queue them.","Cold-list contacts haven't given permission to be called or texted."],
+  dev:"W01 Ingest & normalize · integrations I-01 to I-05 · phone → E.164, address → USPS."},
+ {p:0,short:"Permission check",title:"Do we have permission to contact them?",
+  what:"Before anyone texts or calls, we check that the person agreed to hear from this agency on this channel, and that they aren't on a Do-Not-Call list.",
+  branches:[["✅","Permission OK","Continue to next step","next"],["⏸️","Missing permission","Hold. Email only until they opt in"],["⛔","On Do-Not-Call / known litigator","Blocked everywhere"]],
+  time:"< 3 seconds",tools:["consent","ghl","wh"],
+  watch:["Florida and federal law fine every illegal text, so there are no shortcuts.","Consent proof must be saved (it expires after 90 days on the free tier)."],
+  dev:"W02 Consent gate · requirements C-01 to C-03 · stores certificate ID, page URL, timestamp."},
+ {p:1,short:"Know them?",title:"Do we already know this person?",
+  what:"We match by phone, then email, then address, so one family always means one record, across all three agencies.",
+  branches:[["🆕","New person","Create a new household and continue","next"],["⭐","Existing customer","Don't treat them as new. Send to their account manager to offer more coverage"],["🔁","Already a prospect","Merge with the existing record"],["❓","Not sure","A person reviews the match"]],
+  time:"< 2 seconds",tools:["n8n","wh","ghl"],
+  watch:["Families sharing one phone can be merged by mistake, so test with real data."],
+  dev:"W03 Household resolve · xref table maps household_id to every system's own ID."},
+ {p:1,short:"Score",title:"How hot is this lead?",
+  what:"A score from 0 to 100 based on how urgent they are, how much they could buy, whether they fit the carrier's rules, how engaged they are, and where they came from.",
+  branches:[["🔥","Hot (75+)","Call right away during business hours","next"],["🌤️","Warm (40–74)","Text + email, normal follow-up","next"],["❄️","Cool (under 40)","Gentle follow-up"]],
+  time:"< 3 seconds",tools:["n8n","brain"],
+  watch:["The score is recalculated every time they engage.","The reason for the score is always visible to agents."],
+  dev:"W04 Score · weights: urgency 30, household value 25, fit 20, engagement 15, source 10."},
+ {p:1,short:"Pick agency",title:"Which agency, and which agent?",
+  what:"Clear rules decide where the lead belongs. Then the lead goes to an available agent who holds the right license.",
+  branches:[["🏠","Salmon Agency (Allstate only)","Standard home, auto, umbrella"],["🏢","Karla Salmon (many carriers)","Business insurance, old roofs, special cases"],["🧑‍💼","Needs a human decision","Not enough info"]],
+  time:"Whole intake < 10 seconds",tools:["n8n","ghl","brain"],
+  watch:["Moving a lead between agencies needs legal sign-off. Until then the system only suggests, and a person approves.","The carrier-fit rules and roof-age limits still need to be written by the business."],
+  dev:"W05 Route & create · shadow mode ON · weighted round-robin by 90-day close rate · Pre-Call Brief note."},
+ {p:1,short:"First message",title:"Reach out within 60 seconds",
+  what:"The right agency sends a text and an email immediately. An AI assistant asks a few questions and sends the intake form link. Hot leads get a live call during business hours.",
+  branches:[["📱","Text + email","From the correct agency's number"],["🤖","AI assistant qualifies","Asks about coverage needed, renewal date, roof year"],["📅","Books a call","With the right licensed agent"],["🔁","No reply?","Keeps trying for 14 days, then a monthly newsletter"]],
+  time:"< 60 seconds",tools:["ghl","dialer","salt"],
+  watch:["No texts at night. Messages wait until allowed hours.","AI phone calls need their own separate permission.","AI never quotes prices or says someone is covered."],
+  dev:"W06 First touch · Agents 1 (qualifier) + 2 (appointment setter) · 14-day persistence sequence."},
+ {p:2,short:"Fill form",title:"Customer fills out the intake form",
+  what:"One smart form (Salt) collects everything needed for a quote and auto-fills public data about the home and cars. If they stop halfway, we nudge them.",
+  branches:[["✍️","Started the form","Reminders at 15 min, 4 hours, next morning"],["✅","Finished the form","Agent alerted with a short summary","next"]],
+  time:"Agent alerted < 30 seconds",tools:["salt","ghl","ezl"],
+  watch:["Salt's webhooks can arrive twice, so the system ignores duplicates.","The roof year is checked automatically (critical in Florida)."],
+  dev:"W07 Salt sync · events submission.created / form.progress / submission.complete (signed via Svix)."},
+ {p:2,short:"Get quotes",title:"Get quotes",
+  what:"Personal insurance and business insurance take different paths.",
+  branches:[["🏠","Home & auto: Karla Salmon","Agent clicks \"Send to QuoteRUSH\" in Salt and gets many carriers at once"],["🅰️","Home & auto: Salmon Agency","Agent quotes inside Allstate"],["🏢","Business insurance","Cooper reads the documents and fills the forms; we email brokers and match their replies back automatically"]],
+  time:"Broker emails handled < 4 business hrs",tools:["qr","allstate","cooper","ezl"],
+  watch:["The send to QuoteRUSH is one manual click (Salt doesn't do it automatically).","Allstate quoting is fully manual, with no API.","A person checks everything Cooper extracts."],
+  dev:"W08 Quote sync · W09 Submissions mailbox (subject tag [NEW QUOTE] | Biz | Eff | Opp_ID)."},
+ {p:3,short:"Follow up",title:"Follow up until they decide",
+  what:"After the quote is shown, a planned series of messages and agent tasks keeps the conversation going. It stops the moment they reply.",
+  branches:[["👍","They say yes","Collect documents and payment, then bind","next"],["👎","They say no","Save their renewal date and come back 45 days before it"]],
+  time:"7 days personal · 14 days business",tools:["ghl","n8n"],
+  watch:["Every message template must be pre-approved."],
+  dev:"Agent 4 Follow-up · W11 Date scheduler runs daily at 06:00 ET for renewal-date recapture."},
+ {p:3,short:"Policy active",title:"Policy is active: welcome aboard",
+  what:"Once the policy is bound, every sales message stops right away and a 90-day welcome program starts. If a partner referred them, the partner gets a thank-you.",
+  branches:[["🛑","Sales messages stop","Instantly"],["👋","Welcome program","Days 0–90"],["🙏","Thank the referrer","Automatically"]],
+  time:"< 15 minutes after bind",tools:["ezl","allstate","ghl"],
+  watch:["Only a licensed person binds a policy. AI never does.","Allstate policies rely on the agent updating the CRM."],
+  dev:"W10 Bind sync · EZLynx poll or export until API access is approved."},
+ {p:4,short:"Keep & renew",title:"Keep them happy and renew",
+  what:"The system watches for customers who might leave and starts on renewals early. If the price jumps, we shop it for them.",
+  branches:[["📆","Renewal coming","Start 45 days ahead (personal) or 90 days (business)"],["📈","Price up 10%+","Re-shop with other carriers"],["⚠️","Might leave","Weekly at-risk list for account managers"]],
+  time:"Checked nightly",tools:["ghl","ezl","wh"],
+  watch:["Allstate renewal data only comes through report exports."],
+  dev:"W11 Date scheduler · W12 churn + ambassador scores · Agent 5 Service & Retention."},
+ {p:4,short:"Reviews & referrals",title:"Reviews and referrals",
+  what:"On day 21 we ask, \"How did we do, 1 to 5?\" Happy customers get a review link and are asked for referrals. Unhappy ones get a call from their account manager.",
+  branches:[["😀","4–5 stars","Send review link + referral ask"],["😟","1–3 stars","Urgent task: account manager calls"]],
+  time:"Reply handled < 1 minute",tools:["ghl","wh"],
+  watch:["Never pay for reviews or hide bad ones."],
+  dev:"W16 Sentiment router · W15 Referral attribution."}
+];
+
+const ALWAYS = [
+ {i:"🛑",t:"\"STOP\" means stop everywhere",d:"Opt out once, and every system knows within 60 seconds.",tools:["ghl","dialer","instantly"],dev:"W14 Opt-out propagation"},
+ {i:"📊",t:"Everything is logged",d:"Every step is recorded, so the scorecard builds itself.",tools:["wh","n8n"],dev:"W13 Event logger + nightly reconciliation"},
+ {i:"🛡️",t:"AI stays in its lane",d:"No prices, no coverage advice, no \"you're covered\". It hands off to a human.",tools:["brain","ghl"],dev:"Guardrails + 50-conversation regression tests"}
+];
+
+const WEEKS = [
+ ["Wk 1–2","Setup: answer vendor questions, create the database and CRM fields. Apply for EZLynx, QuoteRUSH and texting registration on day 1.","warn"],
+ ["Wk 3–4","Steps 1–3 live: lead in → permission check → match.","warn"],
+ ["Wk 5–6","Steps 4–6 live: score → pick agency → first message in 60 s.","warn"],
+ ["Wk 7–8","Steps 7–8 live: intake form → quotes → business mailbox.","bad"],
+ ["Wk 9–10","Step 9 live: follow-ups and renewal-date comebacks.","ok"],
+ ["Wk 11–12","Steps 10–12 live: welcome, renewals, reviews, scorecard.","warn"]
+];
+
+const $ = s=>document.querySelector(s);
+const col = p => `var(${PH[p].c})`;
+let cur = 0;
+
+// phase header widths match node counts
+$("#phases").innerHTML = PH.map((ph,i)=>{
+  const n = STEPS.filter(s=>s.p===i).length;
+  return `<div class="phase" style="flex:${n};color:${col(i)};border-color:${col(i)}">${ph.name}</div>`;
+}).join("");
+$("#nodes").innerHTML = STEPS.map((s,i)=>`<button class="node" data-i="${i}" style="--c:${col(s.p)}"><div class="dot">${i+1}</div><span>${s.short}</span></button>`).join("");
+$("#nodes").addEventListener("click",e=>{const b=e.target.closest(".node"); if(b) go(+b.dataset.i);});
+
+function toolRows(ids){return ids.map(id=>`<div class="tool"><span>${TOOLS[id][0]}</span>${pill(TOOLS[id][1])}</div>`).join("");}
+
+function go(i){
+  cur = Math.max(0,Math.min(STEPS.length-1,i));
+  const s = STEPS[cur], c = col(s.p);
+  document.documentElement.style.setProperty("--c",c);
+  document.querySelectorAll(".node").forEach((n,k)=>{n.classList.toggle("cur",k===cur);n.classList.toggle("done",k<cur);});
+  $("#stage").innerHTML = `
+   <div class="card" style="--c:${c}">
+     <span class="ptag">Step ${cur+1} · ${PH[s.p].name}</span>
+     <div class="big">${s.title}</div>
+     <p class="what">${s.what}</p>
+     <p class="lbl">${s.branches.some(b=>b[3])?"What happens next":"How it works"}</p>
+     <div class="branches">${s.branches.map(b=>`
+       <div class="br ${b[3]?"link":""}" ${b[3]?'data-next="1"':""}><span class="ic">${b[0]}</span><div><b>${b[1]}</b><small>${b[2]}</small></div>${b[3]?`<span class="go">Next step →</span>`:""}</div>`).join("")}
+     </div>
+     <details><summary>For developers</summary><p>${s.dev}</p></details>
+   </div>
+   <div class="side">
+     <div class="card" style="--c:${c}"><p class="lbl">Target time</p><div class="time">${s.time}</div></div>
+     <div class="card"><p class="lbl">Tools used</p><div class="tools">${toolRows(s.tools)}</div></div>
+     <div class="card"><p class="lbl">⚠️ Watch out</p><ul class="watch">${s.watch.map(w=>`<li>${w}</li>`).join("")}</ul></div>
+   </div>`;
+  $("#prev").disabled = cur===0;
+  $("#next").disabled = cur===STEPS.length-1;
+  $("#next").textContent = cur===STEPS.length-1 ? "Done ✓" : `Next: ${STEPS[cur+1].short} →`;
+  $("#count").textContent = `${cur+1} of ${STEPS.length}`;
+  const node = document.querySelectorAll(".node")[cur]; node.scrollIntoView({block:"nearest",inline:"center",behavior:"smooth"});
+}
+$("#stage").addEventListener("click",e=>{ if(e.target.closest("[data-next]")) go(cur+1); });
+$("#prev").onclick=()=>go(cur-1);
+$("#next").onclick=()=>go(cur+1);
+document.addEventListener("keydown",e=>{
+  if(e.target.closest("summary,input,textarea")) return;
+  if(e.key==="ArrowRight") go(cur+1);
+  if(e.key==="ArrowLeft") go(cur-1);
+});
+
+$("#always").innerHTML = ALWAYS.map(a=>`
+  <div class="card" style="--c:var(--p1)"><div style="font-size:22px">${a.i}</div><b>${a.t}</b>
+  <div class="hint" style="margin:4px 0 8px">${a.d}</div><div class="tools">${toolRows(a.tools)}</div>
+  <details><summary>For developers</summary><p>${a.dev}</p></details></div>`).join("");
+
+$("#toolGrid").innerHTML = Object.values(TOOLS).map(t=>`<div class="mini"><b>${t[0]} ${pill(t[1])}</b>${t[2]}</div>`).join("");
+$("#weeks").innerHTML = WEEKS.map(w=>`<div class="wk"><b>${w[0]}</b><span>${w[1]}</span>${pill(w[2])}</div>`).join("");
+
+$("#themeBtn").onclick=()=>{
+  const r=document.documentElement, d=r.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
+  r.dataset.theme = d==="dark"?"light":"dark";
+};
+go(0);
+</script>
+</body>
+</html>
